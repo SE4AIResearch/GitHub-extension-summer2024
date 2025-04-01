@@ -1,13 +1,118 @@
 const button = document.getElementById("b");
+const cancelBtn = document.getElementById("cancel_btn");
 const summary = document.getElementById("summary");
 const intent = document.getElementById("intent");
 const impact = document.getElementById("impact");
 const instruction = document.getElementById("instruction");
 
+let summaryGenerating = false;
+let summaryTimeout; 
+let keysAvailable = false;
+
+// Check if keys are available on popup load
+function checkKeysAvailability() {
+    chrome.storage.local.get(['appId', 'githubToken', 'openaiKey'], function(result) {
+        if (result.githubToken && result.openaiKey) {
+            keysAvailable = true;
+            if (button) {
+                button.disabled = false;
+                button.classList.remove('disabled');
+            }
+            console.log("API keys available, Generate Summary button enabled");
+        } else if (result.appId) {
+            // If we have appId but no keys in local storage, try fetching from backend
+            fetch(`http://localhost:8080/api/get-keys?uuid=${result.appId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.githubApiKey && data.openaiLlmApiKey) {
+                        keysAvailable = true;
+                        // Save to local storage for quick access
+                        chrome.storage.local.set({
+                            githubToken: data.githubApiKey,
+                            openaiKey: data.openaiLlmApiKey
+                        });
+                        if (button) {
+                            button.disabled = false;
+                            button.classList.remove('disabled');
+                        }
+                        console.log("API keys fetched from backend, Generate Summary button enabled");
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching keys:", error);
+                });
+        }
+    });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const settingsBtn = document.getElementById("settings-btn");
+    if (settingsBtn) {
+      settingsBtn.addEventListener("click", () => {
+        window.location.href = "settings.html";
+      });
+    }
+    
+    // Check if keys are available when popup opens
+    checkKeysAvailability();
+});
+
+// Listen for messages from the settings page or background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "settingsUpdated") {
+        keysAvailable = true;
+        if (button) {
+            button.disabled = false;
+            button.classList.remove('disabled');
+        }
+        console.log("Settings updated, Generate Summary button enabled");
+    }
+    return true;
+});
+
 window.addEventListener("DOMContentLoaded", () => 
 {
+    // Disable the Generate Summary button initially if no keys are available
+    if (button && !keysAvailable) {
+        button.disabled = true;
+        button.classList.add('disabled');
+    }
+    
     button.addEventListener('click', () => 
         {
+        // Don't proceed if keys are not available
+        if (!keysAvailable) {
+            alert("Please set your GitHub OAuth token and OpenAI API key in Settings first.");
+            return;
+        }
+            
         chrome.runtime.sendMessage({ action: "buttonClicked" });
+
+        if (summaryGenerating) {
+            alert("Summary generation is already in progress!");
+            return;
+        }
+
+        summaryGenerating = true; 
+        console.log("Generating summary...");
+
+        summaryTimeout = setTimeout(() => {
+            summaryGenerating = false;
+            console.log("Summary generated successfully!");
+        }, 5000);
     });
+
+    if (cancelBtn) {
+                cancelBtn.addEventListener("click", () => {
+            if (!summaryGenerating) {
+                alert("No summary generation in progress.");
+                return;
+            }
+
+            summaryGenerating = false; 
+            clearTimeout(summaryTimeout); 
+            console.log("Summary generation stopped.");
+            document.getElementsByClassName('loading')[0].style.display = "none";
+        });
+    }
 })
