@@ -15,7 +15,8 @@
     },
     "permissions": [
         "activeTab",
-        "tabs"
+        "tabs",
+        "storage"
     ],
     "content_scripts": [
         {
@@ -25,8 +26,7 @@
     ],
     "web_accessible_resources": [
         {
-            
-            "resources": ["pics/*"],
+            "resources": ["index.html","static/"],
             "matches": ["<all_urls>"]
         }
     ]
