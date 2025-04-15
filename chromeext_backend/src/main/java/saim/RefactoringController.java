@@ -1,12 +1,21 @@
 package saim;
 
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-import org.refactoringminer.api.GitHistoryRefactoringMiner;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.kohsuke.github.GitHub;
+import org.kohsuke.github.GitHubBuilder;
+
 import org.refactoringminer.api.Refactoring;
 import org.refactoringminer.api.RefactoringHandler;
 import org.refactoringminer.rm1.GitHistoryRefactoringMinerImpl;
@@ -23,119 +32,237 @@ import com.theokanning.openai.service.OpenAiService;
 
 @RestController
 public class RefactoringController {
-    private static final String aitoken = System.getenv("OPENAI_API_KEY");
+    /*
+     * REmoving the env variable for openai api key 
+     */
+    //private static final String aitoken = System.getenv("OPENAI_API_KEY");
+
+    @Autowired
+    private ApiKeyRepo apiKeyRepo;
 
     @Autowired
     private CommitService cService;
     private final AtomicLong counter = new AtomicLong();
 
-    public String returnrefs(String url, String id) 
-    {
-        String fullurl = url + "/commit/" + id;
-        System.out.println(fullurl);
-        if (aitoken == null || aitoken.isBlank()) 
-        {
-            System.out.println(aitoken);
-            throw new RuntimeException("Token not valid.");
+    public String returnrefs(String url, String id, String uuid) {
+
+        ReactoringHelper helper = new ReactoringHelper();
+        LLM llm = new LLM();
+
+        id = helper.cleanCommitId(id);
+
+        ApiKey apiKey = retrieveApiKey(uuid);
+        String aiToken = apiKey.getOpenaiLlmApiKey();
+        if (aiToken == null || aiToken.isBlank()) {
+            throw new RuntimeException("OpenAI API key not configured");
         }
+
+        String fullUrl = url + "/commit/" + id;
+        System.out.println("Processing URL: " + fullUrl);
+
+        String repoUrl = helper.getRepoUrl(url);
+
+        String githubToken = apiKey.getGithubApiKey();
+        if (githubToken == null || githubToken.isBlank()) {
+            throw new RuntimeException("GitHub API token not configured");
+        }
+
+        GitHistoryRefactoringMinerImpl miner = new GitHistoryRefactoringMinerImpl();
+        setupGitHubAuthentication(githubToken, miner);
+        testGitHubAuthentication(githubToken);
 
         StringBuilder refactoringMessages = new StringBuilder();
-        GitHistoryRefactoringMiner miner = new GitHistoryRefactoringMinerImpl();
-        HashMap<String, Integer> refactoringinstances = new HashMap<>();
+        Map<String, Integer> refactoringInstances = new HashMap<>();
 
-        miner.detectAtCommit(url, id, new RefactoringHandler() 
-        {
-            @Override
-            public void handle(String commitId, List<Refactoring> refactorings) {
-                int x = 1;
-                for (Refactoring ref : refactorings) {
-                    // BINDS ALL THE COMMIT MESSAGES INTO REFACTORING MESSAGES
-                    refactoringMessages.append(x + ". " + ref.toString() + "\n");
+        boolean apiSuccess = analyzeCommitUsingGitHubApi(repoUrl, id, miner, refactoringMessages, refactoringInstances);
 
-                    String refType = ref.getRefactoringType().toString();
-
-                    int count = refactoringinstances.containsKey(refType) ? refactoringinstances.get(refType) : 0;
-                    refactoringinstances.put(refType, count + 1);
-                    x++;
-                }
-            }
-        }, 10);
-
-        String refactorings = refactoringMessages.toString();
-        System.out.println("Refactoring Miner tool " + refactorings + "\n");
-
-        // IF THERE ARE NO REFACTORINGS
-        if (refactorings.trim().isEmpty()) {
-            System.out.println("No refs");
-            //return ("No Refactorings");
-            OpenAiService service = new OpenAiService(aitoken);
-            StringBuilder returnedResultfromgpt = new StringBuilder();
-            try {
-                CompletionRequest completionRequest = CompletionRequest.builder()
-                        .prompt("Act as a prompt optimizer and optimize the following prompt for summary on changes. The prompt is [Given the following url, generate a clear, concise and COMPLETE message that is 1-2 sentences that summarizes the changes in the code for people to understand. After the summary, give one line for the motivation behind these changes and then give one line on the impact of these changes. Write it in this format: SUMMARY: summary changes, INTENT: intent line, IMPACT: impact line]\n" + fullurl)
-                        .model("gpt-3.5-turbo-instruct")
-                        .maxTokens(300)
-                        .build();
-                CompletionResult result = service.createCompletion(completionRequest);
-                List<CompletionChoice> choices = result.getChoices();
-                if (choices != null && !choices.isEmpty()) {
-                    String text = choices.get(0).getText();
-                    returnedResultfromgpt.append(text);
-                }
-                returnedResultfromgpt.append(" ." + " INSTRUCTION: " + "No Refactorings");
-                return returnedResultfromgpt.toString();
-            } catch (Exception exp) {
-                throw new RuntimeException(exp.getMessage());
-            }
+        if (!apiSuccess) {
+            analyzeCommitUsingLocalClone(repoUrl, id, miner, refactoringMessages, refactoringInstances);
         }
 
-        // IF THERE ARE REFACTORINGS
-        OpenAiService service = new OpenAiService(aitoken);
-        StringBuilder returnedResultfromgpt = new StringBuilder();
-        StringBuilder instructions = new StringBuilder();
-        try {
-            CompletionRequest completionRequest = CompletionRequest.builder()
-                    .prompt("Act as a prompt optimizer and optimize the following prompt for summary on changes. The prompt is [Given the following list of refactoring changes, generate a clear, concise and COMPLETE message that can contain multiple sentences that summarizes ALL the refactoring changes effectively for people to understand. After the summary, give one line for the intent behind these changes and then give one line on the impact of these changes. Write it in this format: SUMMARY: summary changes, INTENT: intent line, IMPACT: impact line]\n" + refactorings)
-                    .model("gpt-3.5-turbo-instruct")
-                    .maxTokens(300)
-                    .build();
-            CompletionResult result = service.createCompletion(completionRequest);
-            List<CompletionChoice> choices = result.getChoices();
-
-            if (choices != null && !choices.isEmpty()) {
-                String text = choices.get(0).getText();
-                returnedResultfromgpt.append(text);
-            }
-
-            for (Map.Entry<String, Integer> entry : refactoringinstances.entrySet()) {
-                String key = entry.getKey();
-                Integer value = entry.getValue();
-                instructions.append(value + " " + key + "  ");
-
-            }
-            returnedResultfromgpt.append(" " + "INSTRUCTION: " + instructions.toString());
-            return returnedResultfromgpt.toString();
-        } 
-        catch (Exception exp) {
-            throw new RuntimeException(exp.getMessage());
+        OpenAiService service = new OpenAiService(aiToken);
+        if (refactoringMessages.toString().trim().isEmpty()) {
+            return llm.generateSummaryForNoRefactorings(fullUrl, repoUrl, service, aiToken);
+        } else {
+            return llm.generateSummaryForRefactorings(refactoringMessages.toString(), refactoringInstances, repoUrl, fullUrl, aiToken);
         }
     }
 
-    @CrossOrigin(origins = "http://localhost:8080")
+
+
+    private ApiKey retrieveApiKey(String uuid) {
+        Optional<ApiKey> apiKeyOpt = apiKeyRepo.findByUuid(uuid);
+        if (apiKeyOpt.isEmpty()) {
+            throw new RuntimeException("API key not found for UUID: " + uuid);
+        }
+        return apiKeyOpt.get();
+    }
+
+
+
+    private void setupGitHubAuthentication(String githubToken, GitHistoryRefactoringMinerImpl miner) {
+        System.out.println("Using GitHub token for authentication");
+        System.setProperty("github.oauth", githubToken);
+
+        try {
+            Class<?> processEnvironmentClass = Class.forName("java.lang.ProcessEnvironment");
+            Field theEnvironmentField = processEnvironmentClass.getDeclaredField("theEnvironment");
+            theEnvironmentField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            Map<String, String> env = (Map<String, String>) theEnvironmentField.get(null);
+            env.put("GITHUB_OAUTH", githubToken);
+            env.put("GITHUB_TOKEN", githubToken);
+        } catch (Exception e) {
+            System.err.println("Could not set environment variables: " + e.getMessage());
+        }
+
+        try {
+            System.out.println("Attempting to directly set GitHub token in RefactoringMiner");
+            Field githubField = GitHistoryRefactoringMinerImpl.class.getDeclaredField("gitHub");
+            githubField.setAccessible(true);
+            GitHub authorizedGitHub = new GitHubBuilder().withOAuthToken(githubToken).build();
+            githubField.set(miner, authorizedGitHub);
+            System.out.println("Successfully injected authenticated GitHub instance into RefactoringMiner");
+        } catch (Exception e) {
+            System.err.println("Could not directly set GitHub token in RefactoringMiner: " + e.getMessage());
+        }
+    }
+
+    private boolean testGitHubAuthentication(String githubToken) {
+        try {
+            GitHub github = new GitHubBuilder().withOAuthToken(githubToken).build();
+            String username = github.getMyself().getLogin();
+            System.out.println("Successfully authenticated as GitHub user: " + username);
+            return true;
+        } catch (Exception e) {
+            System.err.println("Warning: GitHub API authentication test failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private boolean analyzeCommitUsingGitHubApi(String repoUrl, String commitId, GitHistoryRefactoringMinerImpl miner,
+                                                StringBuilder refactoringMessages, Map<String, Integer> refactoringInstances) {
+        final boolean[] refactoringsFound = {false};
+        try {
+            miner.detectAtCommit(repoUrl, commitId, new RefactoringHandler() {
+                @Override
+                public void handle(String commitId, List<Refactoring> refactorings) {
+                    System.out.println("Found " + refactorings.size() + " refactorings");
+                    if (!refactorings.isEmpty()) {
+                        refactoringsFound[0] = true;
+                    }
+                    int x = 1;
+                    for (Refactoring ref : refactorings) {
+                        refactoringMessages.append(x + ". " + ref.toString() + "\n");
+                        System.out.println("Refactoring found: " + ref.getRefactoringType());
+                        String refType = ref.getRefactoringType().toString();
+                        refactoringInstances.put(refType, refactoringInstances.getOrDefault(refType, 0) + 1);
+                        x++;
+                    }
+                }
+                @Override
+                public void handleException(String commitId, Exception e) {
+                    System.err.println("Error detecting refactorings for commit " + commitId);
+                    e.printStackTrace();
+                    refactoringsFound[0] = false;
+                }
+            }, 120);
+            return (refactoringMessages.length() > 0 && refactoringsFound[0]);
+        } catch (Exception e) {
+            System.err.println("Error analyzing commit with GitHub API: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private void analyzeCommitUsingLocalClone(String repoUrl, String commitId, GitHistoryRefactoringMinerImpl miner,
+                                              StringBuilder refactoringMessages, Map<String, Integer> refactoringInstances) {
+        try {
+            System.out.println("GitHub API approach failed - falling back to shallow clone approach");
+            Path tempDir = Files.createTempDirectory("refactoring-clone-");
+            File localRepoDir = tempDir.toFile();
+            localRepoDir.deleteOnExit();
+            System.out.println("Cloning repository to: " + localRepoDir.getAbsolutePath());
+
+            Git.cloneRepository().setURI(repoUrl).setDirectory(localRepoDir)
+                    .setCloneAllBranches(false)
+                    .setNoCheckout(false)
+                    .setDepth(1)
+                    .call();
+
+            Git git = Git.open(localRepoDir);
+            git.fetch()
+                    .setRemote("origin")
+                    .setRefSpecs("+refs/heads/*:refs/remotes/origin/*", "+refs/tags/*:refs/tags/*", "+refs/*:refs/*", "+" + commitId + ":" + commitId)
+                    .call();
+
+            Repository repository = new FileRepositoryBuilder()
+                    .setGitDir(new File(localRepoDir, ".git"))
+                    .build();
+
+            System.out.println("Analyzing commit using local clone: " + commitId);
+            refactoringMessages.setLength(0);
+            refactoringInstances.clear();
+
+            miner.detectAtCommit(repository, commitId, new RefactoringHandler() {
+                @Override
+                public void handle(String commitId, List<Refactoring> refactorings) {
+                    System.out.println("Found " + refactorings.size() + " refactorings in local clone");
+                    int x = 1;
+                    for (Refactoring ref : refactorings) {
+                        refactoringMessages.append(x + ". " + ref.toString() + "\n");
+                        System.out.println("Refactoring found: " + ref.getRefactoringType());
+                        String refType = ref.getRefactoringType().toString();
+                        refactoringInstances.put(refType, refactoringInstances.getOrDefault(refType, 0) + 1);
+                        x++;
+                    }
+                }
+                @Override
+                public void handleException(String commitId, Exception e) {
+                    System.err.println("Error detecting refactorings for commit " + commitId + " in local clone");
+                    e.printStackTrace();
+                }
+            }, 120);
+            repository.close();
+            System.out.println("Shallow clone analysis completed successfully");
+        } catch (Exception e) {
+            System.err.println("Error during local clone analysis: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+
+    @CrossOrigin(origins = "*")
     @GetMapping("/greeting")
-    public Greeting greeting(@RequestParam String url, @RequestParam String id, @RequestParam String og) 
+    public Greeting greeting(
+            @RequestParam String url, 
+            @RequestParam String id, 
+            @RequestParam String og,
+            @RequestParam(required = false) String uuid) 
     {
+        // Add logging to debug the received parameters
+        System.out.println("Received URL: " + url);
+        System.out.println("Received ID: " + id);
+        System.out.println("Received UUID: " + uuid);
+
+        // Check if commit is cached
         Optional<String> commitmsg = cService.getCommitfromDB(url, id);
-        if (commitmsg.isPresent()){
-            System.out.println("Refactoring message: " + commitmsg);
-            System.out.println(og);
+        if (commitmsg.isPresent()) {
+            System.out.println("Retrieved cached summary for commit: " + id);
             return new Greeting(counter.incrementAndGet(), commitmsg.get());
         }
-        var refMessage = returnrefs(url, id);
-        cService.saveCommit(id, url, refMessage, og);
-        System.out.println("Refactoring message: " + refMessage);
-        System.out.println(og);
-        return new Greeting(counter.incrementAndGet(), refMessage);
-    }
 
+        // Generate new summary
+        try {
+            String refMessage = returnrefs(url, id, uuid);
+            // Cache the result
+            cService.saveCommit(id, url, refMessage, og);
+            System.out.println("Generated new summary for commit: " + id);
+            return new Greeting(counter.incrementAndGet(), refMessage);
+        } catch (Exception e) {
+            System.err.println("Error processing commit: " + e.getMessage());
+            e.printStackTrace();
+            return new Greeting(counter.incrementAndGet(), 
+                "Error analyzing commit: " + e.getMessage());
+        }
+    }
 }

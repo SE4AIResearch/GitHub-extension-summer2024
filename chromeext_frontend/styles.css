@@ -1,20 +1,243 @@
-body{
-    width: 230px;
-    text-align: center;
-    background-color: rgb(228, 237, 220);
+body {
+    width: 300px;
+    text-align: left;
+    background-color: #f8f9fa;
     font-family: "Roboto Mono", monospace;
     font-optical-sizing: auto;
+    margin: 0;
+    padding: 20px;
 }
 
-button{
+h1 {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 15px;
+    margin-right: auto;
+    margin-bottom: 8%;
+}
+
+.header-container {
+    display: flex;
+    justify-content: space-between; 
+    align-items: center; 
+    width: 100%;
+}
+
+#cp_logo{
+    height: 45px;
+    width: 45px;  
+    height: auto;  
+}
+
+div {
+    margin-bottom: 15px;
+}
+
+label {
+    font-weight: bold;
+    font-size: 14px;
+    display: block;
+    margin-bottom: 5px;
+}
+
+select,
+input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ced4da;
+    border-radius: 5px;
+    font-size: 14px;
+    background-color: white;
+}
+
+select {
+    appearance: none;
+    background: white url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><polygon points="0,0 20,0 10,10" fill="%23000000"/></svg>') no-repeat right 10px center;
+    background-size: 10px;
+    padding-right: 30px;
+    cursor: pointer;
+}
+
+
+input[readonly] {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    font-size: 14px;
+    font-weight: bold;
+    border: 1px solid black;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: 0.3s;
+    text-align: center;
+}
+
+.settings-container{
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+}
+
+
+#back_btn img {
+    height: 25px;
+    width: 25px;  
+    height: auto;  
+}
+
+
+#settings-btn {
+    position: absolute;
+    top: 100px;
+    left: 10px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: contents
+}
+
+#settings-btn img {
+width: 18px;
+height: 18px;
+}
+  
+#b{
     border: black solid 2px;
     border-radius: 10px;
     padding: 8px;
     width: 150px;
+    background-color: white;
+    margin-bottom: 10px;
 }
-button:hover {
+#b:hover {
+
     background-color: rgb(248, 241, 234);
 }
-p{
+
+
+#cancel_btn {
+    border: black solid 2px;
+    border-radius: 10px;
+    padding: 8px;
+    width: 140px;
+    background-color: white;
+    margin-bottom: 10px;
+}
+#cancel_btn:hover {
+
+    background-color: rgb(248, 241, 234);
+}
+
+
+button:hover {
+ 
+  
+    background-color: rgb(248, 241, 234);
+}
+
+p {
     margin-bottom: 5px;
 }
+
+.commit-info {
+    text-align: left;
+    font-size: 14px;
+    padding: 10px;
+    border: 1px solid black;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+/* Disabled button style */
+button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Styles for the commit pro text displayed on GitHub pages */
+.commit-pro-text {
+    display: block;
+    font-family: 'Roboto Mono', monospace;
+    line-height: 1.5;
+    padding: 15px;
+    margin: 15px 0;
+    border-left: 3px solid #2f68a8;
+    background-color: #f6f8fa;
+    border-radius: 3px;
+    white-space: pre-line;
+    color: #24292e;
+}
+
+.commit-pro-text strong {
+    font-weight: 600;
+}
+
+/* Loading animation */
+.loading {
+    display: block;
+    margin: 10px auto;
+}
+
+
+
+
+/* dashboard 
+.dashboard-container .dashboard-header {
+    position: relative;
+    background: #b02727;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font-family: 'Poppins', sans-serif;
+  }
+  
+   .dashboard-header h1 {
+    font-size: 1.8rem;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: #b02727;
+  }
+  
+   .dashboard-header .header-buttons {
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center; 
+  
+  }
+  
+  .dashboard-header .header-buttons button {
+    background: transparent;
+    border: none;
+    padding: 5px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+  }
+  
+  .dashboard-header .header-buttons button img {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+  }
+  
+  .dashboard-header .header-buttons button:hover {
+    transform: scale(1.1);
+  }
+  
+  .header-details {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    font-size: 0.95rem;
+    color: #555;
+  }
+  
+  .header-details .score {
+    font-weight: 600;
+    color: #007b5e;
+  }
+  */
